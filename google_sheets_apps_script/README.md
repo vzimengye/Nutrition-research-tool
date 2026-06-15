@@ -134,6 +134,27 @@ Nutrition Tools > Lookup selected rows online
 Nutrition Tools > Approve selected candidates
 ```
 
+## Parse Retailer or Brand Product Pages
+
+If Walmart, Target, Kroger, Amazon, or a brand website has the product page:
+
+1. Copy the product page URL.
+2. Paste it into `candidate_page_url`.
+3. Select the row.
+4. Run:
+
+```text
+Nutrition Tools > Parse product page URLs
+```
+
+The script will try to read the page text and parse values such as calories,
+fat, carbohydrate, sugar, added sugar, protein, serving size, and servings per
+container.
+
+These values are written to `candidate_*` columns only. They must be reviewed
+before approval because retailer pages can mix sizes, flavors, multipacks, or
+third-party listings.
+
 ## Candidate Search Links
 
 The script creates targeted links:

@@ -79,6 +79,8 @@ const CONFIG = {
     "candidate_protein",
     "candidate_year",
     "candidate_source",
+    "candidate_page_url",
+    "page_text",
     "ocr_image_url",
     "ocr_text",
   ],
@@ -103,6 +105,7 @@ function onOpen() {
     .addItem("Lookup selected rows from source cache", "lookupSelectedRowsFromSourceCache")
     .addItem("Lookup selected rows online", "lookupSelectedRowsOnline")
     .addSeparator()
+    .addItem("Parse product page URLs", "parseProductPageUrlsForSelectedRows")
     .addItem("Parse OCR image URLs", "parseOcrForSelectedRows")
     .addItem("Approve selected candidates", "approveSelectedCandidates")
     .addItem("Mark selected as not found", "markSelectedNotFound")
@@ -420,6 +423,91 @@ function parseOcrForSelectedRows() {
   SpreadsheetApp.getUi().alert(`OCR parsed: ${parsed}\nSkipped verified: ${skipped}`);
 }
 
+function parseProductPageUrlsForSelectedRows() {
+  const sheet = SpreadsheetApp.getActiveSheet();
+  setupWithoutRegeneratingLinks_(sheet);
+  const map = getHeaderMap_(sheet);
+  const rowNums = getSelectedRowNumbers_(sheet);
+  let parsed = 0;
+  let skipped = 0;
+
+  rowNums.forEach((rowNum) => {
+    if (isVerifiedRow_(sheet, rowNum, map)) {
+      skipped += 1;
+      return;
+    }
+
+    const pageUrl = sheet.getRange(rowNum, map.candidate_page_url).getDisplayValue();
+    if (!pageUrl) return;
+
+    const pageText = fetchProductPageText_(pageUrl);
+    if (!pageText) {
+      setIfHeaderExists_(sheet, rowNum, map, "match_notes", "Could not read product page text. Try copying the nutrition label image URL into ocr_image_url.");
+      return;
+    }
+
+    const result = parseNutritionText_(pageText);
+    result.source = pageUrl;
+    result.matchType = "Product page candidate - review required";
+    result.notes = "Parsed from retailer/brand product page text. Review product, size, and values before approval.";
+
+    setIfHeaderExists_(sheet, rowNum, map, "page_text", pageText.slice(0, 4000));
+    writeCandidateResult_(sheet, rowNum, map, result);
+    parsed += 1;
+    Utilities.sleep(300);
+  });
+
+  SpreadsheetApp.getUi().alert(`Product pages parsed: ${parsed}\nSkipped verified: ${skipped}`);
+}
+
+function fetchProductPageText_(pageUrl) {
+  try {
+    const response = UrlFetchApp.fetch(pageUrl, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        "User-Agent": CONFIG.appUserAgent,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+    });
+    if (response.getResponseCode() < 200 || response.getResponseCode() >= 400) return "";
+    const html = response.getContentText();
+    return htmlToSearchableText_(html);
+  } catch (error) {
+    return "";
+  }
+}
+
+function htmlToSearchableText_(html) {
+  const source = String(html || "");
+  const jsonText = source
+    .match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)
+    ?.join(" ") || "";
+  return decodeHtmlEntities_(
+    `${jsonText} ${source}`
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\\u0026/g, "&")
+      .replace(/\\u003c/gi, "<")
+      .replace(/\\u003e/gi, ">")
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+function decodeHtmlEntities_(text) {
+  return String(text || "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
 function ocrImageUrl_(imageUrl) {
   try {
     const blob = UrlFetchApp.fetch(imageUrl, { muteHttpExceptions: true }).getBlob();
@@ -679,12 +767,12 @@ function parseNutritionText_(text) {
     servingsPerContainer: numberAfter_(text, /servings?\s+per\s+container/i),
     servingSizeQ: serving.quantity,
     servingSizeUom: serving.unit,
-    calories: numberAfter_(text, /calories/i),
-    totalFat: numberAfter_(text, /total\s+fat/i),
-    totalCarb: numberAfter_(text, /total\s+carbohydrate/i),
-    sugar: numberAfter_(text, /total\s+sugars?/i),
-    addedSugar: numberAfter_(text, /added\s+sugars?/i),
-    protein: numberAfter_(text, /protein/i),
+    calories: nutrientNumber_(text, /calories/i),
+    totalFat: nutrientNumber_(text, /total\s+fat|fat/i),
+    totalCarb: nutrientNumber_(text, /total\s+carbohydrate|carbohydrate|carbs?/i),
+    sugar: zeroIfPhrase_(text, /\b(no|zero)\s+sugar\b/i, nutrientNumber_(text, /total\s+sugars?|sugars?|sugar/i)),
+    addedSugar: zeroIfPhrase_(text, /\b(no|zero)\s+added\s+sugars?\b/i, nutrientNumber_(text, /added\s+sugars?/i)),
+    protein: nutrientNumber_(text, /protein/i),
     year: "",
     source: "",
     notes: "Parsed from OCR.",
@@ -695,6 +783,18 @@ function numberAfter_(text, labelRegex) {
   const source = String(text || "").replace(/\n/g, " ");
   const match = source.match(new RegExp(`${labelRegex.source}\\D*([0-9]+(?:\\.[0-9]+)?)`, "i"));
   return match ? Number(match[1]) : "";
+}
+
+function nutrientNumber_(text, labelRegex) {
+  const source = String(text || "").replace(/\n/g, " ");
+  const after = source.match(new RegExp(`${labelRegex.source}\\D*([0-9]+(?:\\.[0-9]+)?)\\s*(?:g|gram|grams|mg|kcal)?`, "i"));
+  if (after) return Number(after[1]);
+  const before = source.match(new RegExp(`([0-9]+(?:\\.[0-9]+)?)\\s*(?:g|gram|grams|mg|kcal)?\\s*${labelRegex.source}`, "i"));
+  return before ? Number(before[1]) : "";
+}
+
+function zeroIfPhrase_(text, phraseRegex, fallback) {
+  return phraseRegex.test(String(text || "")) ? 0 : fallback;
 }
 
 function servingSizeFromText_(text) {
