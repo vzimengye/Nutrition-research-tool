@@ -85,6 +85,7 @@ const CONFIG = {
   statusOptions: [
     "Not started",
     "Exact UPC auto-filled",
+    "Exact UPC found - missing nutrition",
     "Needs review",
     "OCR parsed - needs review",
     "Verified",
@@ -192,8 +193,13 @@ function lookupSelectedRowsFromSourceCache() {
     const upc = cleanUpc_(sheet.getRange(rowNum, map[CONFIG.input.upc]).getDisplayValue());
     const result = findCacheResultForUpc_(cache, upc);
     if (result) {
-      writeExactResultToFinal_(sheet, rowNum, map, result);
-      exact += 1;
+      if (hasUsableNutritionResult_(result)) {
+        writeExactResultToFinal_(sheet, rowNum, map, result);
+        exact += 1;
+      } else {
+        writeExactMissingNutritionResult_(sheet, rowNum, map, result);
+        missing += 1;
+      }
     } else {
       writeNotFound_(sheet, rowNum, map, "No exact UPC match in nutrition_source_cache.");
       missing += 1;
@@ -234,8 +240,13 @@ function lookupSelectedRowsOnline() {
 
     const exactResult = findExactUpcResultOnline_(upc, description, brand);
     if (exactResult) {
-      writeExactResultToFinal_(sheet, rowNum, map, exactResult);
-      exact += 1;
+      if (hasUsableNutritionResult_(exactResult)) {
+        writeExactResultToFinal_(sheet, rowNum, map, exactResult);
+        exact += 1;
+      } else {
+        writeExactMissingNutritionResult_(sheet, rowNum, map, exactResult);
+        missing += 1;
+      }
       Utilities.sleep(250);
       return;
     }
@@ -585,6 +596,12 @@ function writeExactResultToFinal_(sheet, rowNum, map, result) {
   setIfHeaderExists_(sheet, rowNum, map, "review_status", "Exact UPC auto-filled");
 }
 
+function writeExactMissingNutritionResult_(sheet, rowNum, map, result) {
+  writeMatchMetadata_(sheet, rowNum, map, result);
+  setIfHeaderExists_(sheet, rowNum, map, "review_status", "Exact UPC found - missing nutrition");
+  setIfHeaderExists_(sheet, rowNum, map, "match_notes", `${result.notes || "Exact UPC match."} Source has no usable nutrition fields; use source/search links or OCR.`);
+}
+
 function writeCandidateResult_(sheet, rowNum, map, result) {
   writeMatchMetadata_(sheet, rowNum, map, result);
   setIfHeaderExists_(sheet, rowNum, map, "candidate_servings_per_container", result.servingsPerContainer);
@@ -705,6 +722,18 @@ function hasNutrition_(product) {
     n.carbohydrates_serving,
     n.sugars_serving,
     n.proteins_serving,
+  ]));
+}
+
+function hasUsableNutritionResult_(result) {
+  return Boolean(firstPresent_([
+    result.servingSizeQ,
+    result.calories,
+    result.totalFat,
+    result.totalCarb,
+    result.sugar,
+    result.addedSugar,
+    result.protein,
   ]));
 }
 
@@ -922,6 +951,7 @@ function applyStatusFormatting_(sheet) {
   const range = sheet.getRange(2, map.review_status, Math.max(sheet.getMaxRows() - 1, 1), 1);
   const rules = [
     statusRule_(range, "Exact UPC auto-filled", "#d1e7dd"),
+    statusRule_(range, "Exact UPC found - missing nutrition", "#fce5cd"),
     statusRule_(range, "Needs review", "#fff3cd"),
     statusRule_(range, "OCR parsed - needs review", "#fff3cd"),
     statusRule_(range, "Verified", "#b6d7a8"),

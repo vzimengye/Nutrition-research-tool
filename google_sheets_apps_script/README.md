@@ -176,6 +176,9 @@ OCR requires Google Apps Script Drive advanced service:
 Exact UPC auto-filled:
 Exact structured source matched the same UPC and final columns were filled.
 
+Exact UPC found - missing nutrition:
+The source had the exact UPC, but did not include usable nutrition fields. Use the source/search links or OCR fallback.
+
 Needs review:
 Candidate was found by name/brand search or manual OCR.
 
