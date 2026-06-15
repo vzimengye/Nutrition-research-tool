@@ -1,0 +1,21 @@
+# Project data files
+*_upc_all.csv
+*_automation_template.csv
+nutrition_source_cache.csv
+
+# Downloaded public data exports
+*.gz
+*.zip
+en.openfoodfacts.org.products*
+FoodData_Central*/
+
+# Python/runtime caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
