@@ -76,6 +76,45 @@
         font-size: 11px;
         line-height: 1.4;
       }
+
+      .image-list {
+        margin: 8px 0 12px;
+        max-height: 220px;
+        overflow: auto;
+      }
+
+      .image-item {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        gap: 8px;
+        padding: 8px 0;
+        border-top: 1px solid #d9e2ec;
+      }
+
+      .image-item img {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        border: 1px solid #d9e2ec;
+        background: #f8fafc;
+      }
+
+      .image-meta {
+        min-width: 0;
+        font-size: 11px;
+      }
+
+      .image-meta code {
+        display: block;
+        overflow-wrap: anywhere;
+        color: #52606d;
+      }
+
+      .image-meta button {
+        margin-top: 6px;
+        padding: 5px 7px;
+        font-size: 11px;
+      }
     </style>
   </head>
   <body>
@@ -87,8 +126,10 @@
       <button id="copy-text" class="secondary" type="button">Copy page text</button>
     </div>
     <textarea id="tsv" readonly></textarea>
+    <h1>Likely Nutrition Label Images</h1>
+    <div id="images" class="image-list"></div>
     <p class="hint">
-      Paste the copied row into the Google Sheet candidate columns. These values are candidates only and should be reviewed before approval.
+      Paste the copied row into the Google Sheet candidate columns. If the useful data is in an image, copy an image URL into the Sheet's ocr_image_url column and run Parse OCR image URLs.
     </p>
     <script src="popup.js"></script>
   </body>

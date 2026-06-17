@@ -10,8 +10,10 @@ When opened on a Walmart, Target, Kroger, Amazon, or brand product page, the ext
 
 - Reads visible page text, image alt text, meta text, and JSON-LD text.
 - Tries to parse nutrition values such as calories, fat, carbs, sugar, added sugar, protein, serving size, and servings per container.
+- Lists likely nutrition label image URLs found on the current page.
 - Shows the extracted candidate values.
 - Copies a tab-separated row that can be pasted into the Google Sheet `candidate_*` columns.
+- Copies a likely nutrition label image URL that can be pasted into the Google Sheet `ocr_image_url` column.
 
 The output is a candidate only. Review product flavor, size, and values before approving.
 
@@ -62,9 +64,25 @@ candidate_year
 candidate_source
 ```
 
+## Use With Nutrition Label Images
+
+If the nutrition facts are shown as an image:
+
+1. Open the product image gallery so the nutrition label image is visible.
+2. Click the extension icon.
+3. Under `Likely Nutrition Label Images`, click `Copy image URL`.
+4. Paste the URL into the Google Sheet `ocr_image_url` column.
+5. In Google Sheets, select the row and run:
+
+```text
+Nutrition Tools > Parse OCR image URLs
+```
+
+The OCR output goes into candidate columns and should be reviewed before approval.
+
 ## Limitations
 
-- Some websites hide nutrition data in images only; this extension cannot OCR images.
+- The extension does not OCR images directly. It helps copy likely nutrition label image URLs for the Google Sheets OCR workflow.
 - If values are only visible after clicking/expanding a section, expand it before running the extension.
 - Retailer pages may mix flavors, sizes, or multipacks. Always verify before approval.
 - This tool does not confirm exact UPC unless the page text itself contains the UPC.

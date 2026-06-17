@@ -13,6 +13,7 @@ const CANDIDATE_COLUMNS = [
 ];
 
 let currentResult = null;
+let currentImages = [];
 
 document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("copy-row").addEventListener("click", copyCandidateRow);
@@ -40,11 +41,21 @@ async function runExtraction() {
 }
 
 function collectPageText() {
+  const images = Array.from(document.images)
+    .map((img) => ({
+      src: img.currentSrc || img.src || "",
+      alt: img.alt || "",
+      title: img.title || "",
+      ariaLabel: img.getAttribute("aria-label") || "",
+      width: img.naturalWidth || img.width || 0,
+      height: img.naturalHeight || img.height || 0,
+    }))
+    .filter((img) => img.src && !img.src.startsWith("data:"));
   const jsonLd = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
     .map((node) => node.textContent || "")
     .join(" ");
-  const imageText = Array.from(document.images)
-    .map((img) => [img.alt, img.title, img.getAttribute("aria-label")].filter(Boolean).join(" "))
+  const imageText = images
+    .map((img) => [img.alt, img.title, img.ariaLabel, img.src].filter(Boolean).join(" "))
     .join(" ");
   const metaText = Array.from(document.querySelectorAll("meta"))
     .map((meta) => meta.content || "")
@@ -53,6 +64,7 @@ function collectPageText() {
   return {
     url: location.href,
     title: document.title || "",
+    images,
     text: `${document.title || ""} ${metaText} ${jsonLd} ${imageText} ${bodyText}`
       .replace(/\s+/g, " ")
       .trim()
@@ -76,6 +88,7 @@ function parseNutrition(page) {
     candidate_year: "",
     candidate_source: page.url,
   };
+  currentImages = rankLikelyNutritionImages(page.images || []);
   return {
     page,
     values,
@@ -91,6 +104,7 @@ function renderResult(result) {
 
   document.getElementById("result").innerHTML = `<table>${rows}</table>`;
   document.getElementById("tsv").value = result.tsv;
+  renderImages(currentImages);
 }
 
 async function copyCandidateRow() {
@@ -103,6 +117,57 @@ async function copyPageText() {
   if (!currentResult) return;
   await navigator.clipboard.writeText(currentResult.page.text);
   document.getElementById("status").textContent = "Page text copied.";
+}
+
+function renderImages(images) {
+  const container = document.getElementById("images");
+  if (!images.length) {
+    container.innerHTML = `<p class="hint">No likely nutrition label images found on this page. Try opening the product image gallery first.</p>`;
+    return;
+  }
+
+  container.innerHTML = images.slice(0, 8).map((image, index) => `
+    <div class="image-item">
+      <img src="${escapeHtml(image.src)}" alt="">
+      <div class="image-meta">
+        <strong>Score: ${escapeHtml(image.score)}</strong>
+        <code>${escapeHtml(image.src)}</code>
+        <button type="button" data-image-index="${index}">Copy image URL</button>
+      </div>
+    </div>
+  `).join("");
+
+  container.querySelectorAll("button[data-image-index]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const image = images[Number(button.dataset.imageIndex)];
+      await navigator.clipboard.writeText(image.src);
+      document.getElementById("status").textContent = "Image URL copied. Paste it into ocr_image_url.";
+    });
+  });
+}
+
+function rankLikelyNutritionImages(images) {
+  return images
+    .map((image) => ({
+      ...image,
+      score: scoreNutritionImage(image),
+    }))
+    .filter((image) => image.score >= 2)
+    .sort((a, b) => b.score - a.score);
+}
+
+function scoreNutritionImage(image) {
+  const text = `${image.src} ${image.alt} ${image.title} ${image.ariaLabel}`.toLowerCase();
+  let score = 0;
+  if (/nutrition|nutritional|facts|label/.test(text)) score += 8;
+  if (/ingredient|panel|back|secondary|image|fullcontent/.test(text)) score += 2;
+  if (/front|hero|main|primary/.test(text)) score -= 2;
+  if (image.width >= 250 && image.height >= 120) score += 1;
+  if (image.width > 0 && image.height > 0) {
+    const ratio = image.width / image.height;
+    if (ratio > 1.2 && ratio < 4.5) score += 1;
+  }
+  return score;
 }
 
 function servingSizeFromText(text) {
