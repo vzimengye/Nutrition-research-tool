@@ -185,11 +185,44 @@ Nutrition Tools > Parse OCR image URLs
 
 The parsed values go into `candidate_*` columns and must be reviewed.
 
-OCR requires Google Apps Script Drive advanced service:
+OCR requires the Google Apps Script Drive advanced service using **Drive API v2**.
+This matters because Drive API v3 may be enabled by default, but v3 often fails
+for image OCR with errors such as:
+
+```text
+API call to drive.files.copy failed with error: The requested conversion is not supported.
+```
+
+To enable the correct version:
 
 1. In Apps Script, click `Services`.
 2. Add `Drive API`.
-3. Save.
+3. If the version dropdown is shown, choose `v2`.
+4. Save.
+
+If the Apps Script UI only added Drive API v3:
+
+1. Click the gear icon `Project Settings`.
+2. Enable `Show "appsscript.json" manifest file in editor`.
+3. Open `appsscript.json`.
+4. Make sure it includes:
+
+```json
+{
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "Drive",
+        "serviceId": "drive",
+        "version": "v2"
+      }
+    ]
+  },
+  "runtimeVersion": "V8"
+}
+```
+
+The repo includes `google_sheets_apps_script/appsscript.json` as a template.
 
 ## Statuses
 
