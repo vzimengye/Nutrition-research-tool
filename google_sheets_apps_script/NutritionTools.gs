@@ -577,8 +577,14 @@ function decodeHtmlEntities_(text) {
 
 function ocrImageUrl_(imageUrl) {
   try {
-    if (typeof Drive === "undefined" || !Drive.Files || !Drive.Files.insert) {
+    if (typeof Drive === "undefined" || !Drive.Files) {
       return { text: "", error: "Drive API advanced service is not enabled. In Apps Script, go to Services > + > Drive API > Add." };
+    }
+    const hasDriveV2Insert = typeof Drive.Files.insert === "function";
+    const hasDriveV3Create = typeof Drive.Files.create === "function";
+    if (!hasDriveV2Insert && !hasDriveV3Create) {
+      const available = Object.keys(Drive.Files || {}).sort().join(", ");
+      return { text: "", error: `Drive API is enabled, but no supported upload method was found. Available Drive.Files methods: ${available || "none"}` };
     }
 
     const response = UrlFetchApp.fetch(imageUrl, {
@@ -599,11 +605,21 @@ function ocrImageUrl_(imageUrl) {
       return { text: "", error: `URL did not return an image. Content-Type: ${blob.getContentType() || "unknown"}` };
     }
 
-    const resource = {
-      title: `nutrition_ocr_${Date.now()}`,
-      mimeType: MimeType.GOOGLE_DOCS,
-    };
-    const file = Drive.Files.insert(resource, blob, { ocr: true });
+    const fileName = `nutrition_ocr_${Date.now()}`;
+    let file;
+    if (hasDriveV2Insert) {
+      file = Drive.Files.insert(
+        { title: fileName, mimeType: MimeType.GOOGLE_DOCS },
+        blob,
+        { ocr: true }
+      );
+    } else {
+      file = Drive.Files.create(
+        { name: fileName, mimeType: MimeType.GOOGLE_DOCS },
+        blob,
+        { ocrLanguage: "en" }
+      );
+    }
     const doc = DocumentApp.openById(file.id);
     const text = doc.getBody().getText();
     DriveApp.getFileById(file.id).setTrashed(true);
