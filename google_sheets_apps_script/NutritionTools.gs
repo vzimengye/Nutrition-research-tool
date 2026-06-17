@@ -577,6 +577,7 @@ function decodeHtmlEntities_(text) {
 
 function ocrImageUrl_(imageUrl) {
   try {
+    imageUrl = normalizeImageUrl_(imageUrl);
     if (typeof Drive === "undefined" || !Drive.Files) {
       return { text: "", error: "Drive API advanced service is not enabled. In Apps Script, go to Services > + > Drive API > Add." };
     }
@@ -617,7 +618,7 @@ function ocrImageUrl_(imageUrl) {
       file = Drive.Files.create(
         { name: fileName, mimeType: MimeType.GOOGLE_DOCS },
         blob,
-        { ocrLanguage: "en" }
+        { ocr: true, ocrLanguage: "en" }
       );
     }
     const doc = DocumentApp.openById(file.id);
@@ -630,6 +631,12 @@ function ocrImageUrl_(imageUrl) {
   } catch (error) {
     return { text: "", error: error.message || String(error) };
   }
+}
+
+function normalizeImageUrl_(imageUrl) {
+  return String(imageUrl || "")
+    .trim()
+    .replace(/[？。。，,\s]+$/g, "");
 }
 
 function approveSelectedCandidates() {
