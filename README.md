@@ -9,6 +9,7 @@ The tool is designed to help the team:
 - Save non-exact product matches into review columns instead of overwriting final data.
 - Generate targeted search links for brand sites, retailers, and nutrition label images.
 - Optionally parse nutrition label images through OCR when a direct image URL is available.
+- Optionally use a local Chrome extension to extract candidate nutrition values from an opened retailer or brand product page.
 
 ## Current Status
 
@@ -55,3 +56,4 @@ Name/brand matches, retailer pages, brand pages, and OCR results are treated as 
 - `google_sheets_apps_script/README.md`: Detailed setup and usage instructions.
 - `local_tools/build_nutrition_source_cache.py`: Optional script for building a local exact-UPC source cache from public nutrition data exports.
 - `local_tools/add_automation_columns.py`: Optional local CSV helper for previewing automation columns.
+- `browser_tools/nutrition_extractor_extension/`: Optional no-API Chrome extension for extracting candidate values from product pages opened by a reviewer.
