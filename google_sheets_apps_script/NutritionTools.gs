@@ -404,7 +404,7 @@ function parseOcrForSelectedRows() {
     }
 
     const imageUrl = firstPresent_([
-      getIfHeaderExists_(sheet, rowNum, map, "ocr_image_url"),
+      getCellUrlOrValue_(sheet, rowNum, map.ocr_image_url),
       selectedUrls[rowNum],
       findImageUrlInRow_(sheet, rowNum),
     ]);
@@ -442,11 +442,12 @@ function getSelectedImageUrlsByRow_(sheet) {
   ranges.forEach((range) => {
     if (!range) return;
     const values = range.getDisplayValues();
+    const richTexts = range.getRichTextValues();
     for (let r = 0; r < values.length; r += 1) {
       const rowNum = range.getRow() + r;
       if (rowNum < 2) continue;
       for (let c = 0; c < values[r].length; c += 1) {
-        const url = extractImageUrl_(values[r][c]);
+        const url = extractImageUrl_(getRichTextLinkUrl_(richTexts[r][c]) || values[r][c]);
         if (url && !urlsByRow[rowNum]) urlsByRow[rowNum] = url;
       }
     }
@@ -455,9 +456,11 @@ function getSelectedImageUrlsByRow_(sheet) {
 }
 
 function findImageUrlInRow_(sheet, rowNum) {
-  const values = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  const range = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn());
+  const values = range.getDisplayValues()[0];
+  const richTexts = range.getRichTextValues()[0];
   for (let i = 0; i < values.length; i += 1) {
-    const url = extractImageUrl_(values[i]);
+    const url = extractImageUrl_(getRichTextLinkUrl_(richTexts[i]) || values[i]);
     if (url) return url;
   }
   return "";
@@ -467,6 +470,24 @@ function extractImageUrl_(value) {
   const text = String(value || "");
   const match = text.match(/https?:\/\/[^\s"'<>]+(?:\.png|\.jpe?g|\.webp|\.gif)(?:\?[^\s"'<>]*)?/i);
   return match ? match[0] : "";
+}
+
+function getCellUrlOrValue_(sheet, rowNum, colNum) {
+  if (!colNum) return "";
+  const cell = sheet.getRange(rowNum, colNum);
+  return getRichTextLinkUrl_(cell.getRichTextValue()) || cell.getDisplayValue();
+}
+
+function getRichTextLinkUrl_(richText) {
+  if (!richText) return "";
+  const wholeCellUrl = richText.getLinkUrl();
+  if (wholeCellUrl) return wholeCellUrl;
+  const runs = richText.getRuns();
+  for (let i = 0; i < runs.length; i += 1) {
+    const url = runs[i].getLinkUrl();
+    if (url) return url;
+  }
+  return "";
 }
 
 function parseProductPageUrlsForSelectedRows() {
