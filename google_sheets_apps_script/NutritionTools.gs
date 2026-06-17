@@ -393,6 +393,9 @@ function parseOcrForSelectedRows() {
   const rowNums = getSelectedRowNumbers_(sheet);
   let parsed = 0;
   let skipped = 0;
+  let missingUrl = 0;
+  let failed = 0;
+  const selectedUrls = getSelectedImageUrlsByRow_(sheet);
 
   rowNums.forEach((rowNum) => {
     if (isVerifiedRow_(sheet, rowNum, map)) {
@@ -400,12 +403,21 @@ function parseOcrForSelectedRows() {
       return;
     }
 
-    const imageUrl = sheet.getRange(rowNum, map.ocr_image_url).getDisplayValue();
-    if (!imageUrl) return;
+    const imageUrl = firstPresent_([
+      getIfHeaderExists_(sheet, rowNum, map, "ocr_image_url"),
+      selectedUrls[rowNum],
+      findImageUrlInRow_(sheet, rowNum),
+    ]);
+    if (!imageUrl) {
+      missingUrl += 1;
+      return;
+    }
+    setIfHeaderExists_(sheet, rowNum, map, "ocr_image_url", imageUrl);
 
     const text = ocrImageUrl_(imageUrl);
     if (!text) {
       setIfHeaderExists_(sheet, rowNum, map, "match_notes", "OCR failed. Check image URL and enable Apps Script Drive API advanced service.");
+      failed += 1;
       return;
     }
 
@@ -420,7 +432,41 @@ function parseOcrForSelectedRows() {
     parsed += 1;
   });
 
-  SpreadsheetApp.getUi().alert(`OCR parsed: ${parsed}\nSkipped verified: ${skipped}`);
+  SpreadsheetApp.getUi().alert(`OCR parsed: ${parsed}\nMissing image URL: ${missingUrl}\nOCR failed: ${failed}\nSkipped verified: ${skipped}`);
+}
+
+function getSelectedImageUrlsByRow_(sheet) {
+  const urlsByRow = {};
+  const rangeList = sheet.getActiveRangeList();
+  const ranges = rangeList ? rangeList.getRanges() : [sheet.getActiveRange()];
+  ranges.forEach((range) => {
+    if (!range) return;
+    const values = range.getDisplayValues();
+    for (let r = 0; r < values.length; r += 1) {
+      const rowNum = range.getRow() + r;
+      if (rowNum < 2) continue;
+      for (let c = 0; c < values[r].length; c += 1) {
+        const url = extractImageUrl_(values[r][c]);
+        if (url && !urlsByRow[rowNum]) urlsByRow[rowNum] = url;
+      }
+    }
+  });
+  return urlsByRow;
+}
+
+function findImageUrlInRow_(sheet, rowNum) {
+  const values = sheet.getRange(rowNum, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  for (let i = 0; i < values.length; i += 1) {
+    const url = extractImageUrl_(values[i]);
+    if (url) return url;
+  }
+  return "";
+}
+
+function extractImageUrl_(value) {
+  const text = String(value || "");
+  const match = text.match(/https?:\/\/[^\s"'<>]+(?:\.png|\.jpe?g|\.webp|\.gif)(?:\?[^\s"'<>]*)?/i);
+  return match ? match[0] : "";
 }
 
 function parseProductPageUrlsForSelectedRows() {
