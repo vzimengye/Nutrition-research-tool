@@ -414,19 +414,19 @@ function parseOcrForSelectedRows() {
     }
     setIfHeaderExists_(sheet, rowNum, map, "ocr_image_url", imageUrl);
 
-    const text = ocrImageUrl_(imageUrl);
-    if (!text) {
-      setIfHeaderExists_(sheet, rowNum, map, "match_notes", "OCR failed. Check image URL and enable Apps Script Drive API advanced service.");
+    const ocr = ocrImageUrl_(imageUrl);
+    if (!ocr.text) {
+      setIfHeaderExists_(sheet, rowNum, map, "match_notes", `OCR failed: ${ocr.error || "unknown error"}`);
       failed += 1;
       return;
     }
 
-    const result = parseNutritionText_(text);
+    const result = parseNutritionText_(ocr.text);
     result.source = imageUrl;
     result.matchType = "Image OCR candidate - review required";
     result.notes = "Parsed from nutrition label image OCR. Review values before approval.";
 
-    setIfHeaderExists_(sheet, rowNum, map, "ocr_text", text.slice(0, 4000));
+    setIfHeaderExists_(sheet, rowNum, map, "ocr_text", ocr.text.slice(0, 4000));
     writeCandidateResult_(sheet, rowNum, map, result);
     setIfHeaderExists_(sheet, rowNum, map, "review_status", "OCR parsed - needs review");
     parsed += 1;
@@ -577,7 +577,28 @@ function decodeHtmlEntities_(text) {
 
 function ocrImageUrl_(imageUrl) {
   try {
-    const blob = UrlFetchApp.fetch(imageUrl, { muteHttpExceptions: true }).getBlob();
+    if (typeof Drive === "undefined" || !Drive.Files || !Drive.Files.insert) {
+      return { text: "", error: "Drive API advanced service is not enabled. In Apps Script, go to Services > + > Drive API > Add." };
+    }
+
+    const response = UrlFetchApp.fetch(imageUrl, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        "User-Agent": CONFIG.appUserAgent,
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      },
+    });
+    const status = response.getResponseCode();
+    if (status < 200 || status >= 400) {
+      return { text: "", error: `Image fetch failed with HTTP ${status}. Try opening the image URL and copying it again.` };
+    }
+
+    const blob = response.getBlob();
+    if (!String(blob.getContentType() || "").match(/^image\//i)) {
+      return { text: "", error: `URL did not return an image. Content-Type: ${blob.getContentType() || "unknown"}` };
+    }
+
     const resource = {
       title: `nutrition_ocr_${Date.now()}`,
       mimeType: MimeType.GOOGLE_DOCS,
@@ -586,9 +607,12 @@ function ocrImageUrl_(imageUrl) {
     const doc = DocumentApp.openById(file.id);
     const text = doc.getBody().getText();
     DriveApp.getFileById(file.id).setTrashed(true);
-    return text;
+    if (!text || !text.trim()) {
+      return { text: "", error: "Drive OCR returned empty text. Try a larger/clearer image or manually enter values." };
+    }
+    return { text, error: "" };
   } catch (error) {
-    return "";
+    return { text: "", error: error.message || String(error) };
   }
 }
 
