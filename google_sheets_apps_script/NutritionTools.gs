@@ -608,6 +608,7 @@ function ocrImageUrl_(imageUrl) {
 
     const fileName = `nutrition_ocr_${Date.now()}`;
     let file;
+    let tempImageFileId = "";
     if (hasDriveV2Insert) {
       file = Drive.Files.insert(
         { title: fileName, mimeType: MimeType.GOOGLE_DOCS },
@@ -615,15 +616,28 @@ function ocrImageUrl_(imageUrl) {
         { ocr: true }
       );
     } else {
-      file = Drive.Files.create(
-        { name: fileName, mimeType: MimeType.GOOGLE_DOCS },
-        blob,
-        { ocr: true, ocrLanguage: "en" }
-      );
+      try {
+        file = Drive.Files.create(
+          { name: fileName, mimeType: MimeType.GOOGLE_DOCS },
+          blob,
+          { ocr: true, ocrLanguage: "en", fields: "id,name" }
+        );
+      } catch (directCreateError) {
+        // Drive API v3 can reject direct image -> Google Doc OCR conversion.
+        // Upload the image first, then copy/convert it to a Google Doc with OCR.
+        const tempImage = DriveApp.createFile(blob).setName(`${fileName}.jpg`);
+        tempImageFileId = tempImage.getId();
+        file = Drive.Files.copy(
+          { name: fileName, mimeType: MimeType.GOOGLE_DOCS },
+          tempImageFileId,
+          { ocr: true, ocrLanguage: "en", fields: "id,name" }
+        );
+      }
     }
     const doc = DocumentApp.openById(file.id);
     const text = doc.getBody().getText();
     DriveApp.getFileById(file.id).setTrashed(true);
+    if (tempImageFileId) DriveApp.getFileById(tempImageFileId).setTrashed(true);
     if (!text || !text.trim()) {
       return { text: "", error: "Drive OCR returned empty text. Try a larger/clearer image or manually enter values." };
     }
