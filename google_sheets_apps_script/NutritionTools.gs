@@ -608,7 +608,7 @@ function ocrImageUrl_(imageUrl) {
 
     const fileName = `nutrition_ocr_${Date.now()}`;
     const file = Drive.Files.insert(
-      { title: fileName, mimeType: MimeType.GOOGLE_DOCS },
+      { title: `${fileName}.jpg` },
       blob,
       { ocr: true, ocrLanguage: "en" }
     );
