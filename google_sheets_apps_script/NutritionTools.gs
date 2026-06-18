@@ -588,31 +588,15 @@ function ocrImageUrl_(imageUrl) {
       return { text: "", error: `OCR needs Drive API v2 with Drive.Files.insert. The script currently sees these Drive.Files methods: ${available || "none"}. Save Drive service as v2, save the Apps Script project, then refresh the Google Sheet.` };
     }
 
-    const response = UrlFetchApp.fetch(imageUrl, {
-      muteHttpExceptions: true,
-      followRedirects: true,
-      headers: {
-        "User-Agent": CONFIG.appUserAgent,
-        Accept: "image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5",
-      },
-    });
-    const status = response.getResponseCode();
-    if (status < 200 || status >= 400) {
-      return { text: "", error: `Image fetch failed with HTTP ${status}. Try opening the image URL and copying it again.` };
-    }
-
-    const blob = response.getBlob();
-    if (!String(blob.getContentType() || "").match(/^image\//i)) {
-      return { text: "", error: `URL did not return an image. Content-Type: ${blob.getContentType() || "unknown"}` };
-    }
-    if (String(blob.getContentType() || "").toLowerCase().indexOf("webp") !== -1) {
-      return { text: "", error: "Image URL returned WebP, which Drive OCR does not support. Try opening the image in the browser, saving/copying it as JPG or PNG, or use a retailer image URL that returns image/jpeg or image/png." };
+    const imageFetch = fetchOcrCompatibleImage_(imageUrl);
+    if (!imageFetch.blob) {
+      return { text: "", error: imageFetch.error };
     }
 
     const fileName = `nutrition_ocr_${Date.now()}`;
     const file = Drive.Files.insert(
       { title: `${fileName}.jpg` },
-      blob,
+      imageFetch.blob,
       { ocr: true, ocrLanguage: "en" }
     );
     const doc = DocumentApp.openById(file.id);
@@ -625,6 +609,57 @@ function ocrImageUrl_(imageUrl) {
   } catch (error) {
     return { text: "", error: error.message || String(error) };
   }
+}
+
+function fetchOcrCompatibleImage_(imageUrl) {
+  const first = fetchImageBlob_(imageUrl);
+  if (!first.blob) return first;
+  if (!isWebpBlob_(first.blob)) return first;
+
+  const convertedUrl = buildImageJpegProxyUrl_(imageUrl);
+  const converted = fetchImageBlob_(convertedUrl);
+  if (!converted.blob) {
+    return {
+      blob: null,
+      error: `Image URL returned WebP, and JPG conversion failed: ${converted.error}`,
+    };
+  }
+  if (isWebpBlob_(converted.blob)) {
+    return {
+      blob: null,
+      error: "Image URL and conversion proxy both returned WebP. Try a different image URL.",
+    };
+  }
+  return converted;
+}
+
+function fetchImageBlob_(imageUrl) {
+  const response = UrlFetchApp.fetch(imageUrl, {
+    muteHttpExceptions: true,
+    followRedirects: true,
+    headers: {
+      "User-Agent": CONFIG.appUserAgent,
+      Accept: "image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5",
+    },
+  });
+  const status = response.getResponseCode();
+  if (status < 200 || status >= 400) {
+    return { blob: null, error: `Image fetch failed with HTTP ${status}. Try opening the image URL and copying it again.` };
+  }
+
+  const blob = response.getBlob();
+  if (!String(blob.getContentType() || "").match(/^image\//i)) {
+    return { blob: null, error: `URL did not return an image. Content-Type: ${blob.getContentType() || "unknown"}` };
+  }
+  return { blob, error: "" };
+}
+
+function isWebpBlob_(blob) {
+  return String(blob.getContentType() || "").toLowerCase().indexOf("webp") !== -1;
+}
+
+function buildImageJpegProxyUrl_(imageUrl) {
+  return `https://images.weserv.nl/?url=${encodeURIComponent(imageUrl)}&output=jpg`;
 }
 
 function checkOcrSetup() {
