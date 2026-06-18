@@ -593,7 +593,7 @@ function ocrImageUrl_(imageUrl) {
       followRedirects: true,
       headers: {
         "User-Agent": CONFIG.appUserAgent,
-        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        Accept: "image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5",
       },
     });
     const status = response.getResponseCode();
@@ -604,6 +604,9 @@ function ocrImageUrl_(imageUrl) {
     const blob = response.getBlob();
     if (!String(blob.getContentType() || "").match(/^image\//i)) {
       return { text: "", error: `URL did not return an image. Content-Type: ${blob.getContentType() || "unknown"}` };
+    }
+    if (String(blob.getContentType() || "").toLowerCase().indexOf("webp") !== -1) {
+      return { text: "", error: "Image URL returned WebP, which Drive OCR does not support. Try opening the image in the browser, saving/copying it as JPG or PNG, or use a retailer image URL that returns image/jpeg or image/png." };
     }
 
     const fileName = `nutrition_ocr_${Date.now()}`;
