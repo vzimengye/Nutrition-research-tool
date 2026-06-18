@@ -927,10 +927,10 @@ function parseNutritionText_(text) {
     productName: "",
     brand: "",
     matchedUpc: "",
-    servingsPerContainer: numberAfter_(text, /servings?\s+per\s+container/i),
+    servingsPerContainer: numberAfter_(text, /servings?\s+per\s+(?:container|carton|package|pack|box|bottle)/i),
     servingSizeQ: serving.quantity,
     servingSizeUom: serving.unit,
-    calories: nutrientNumber_(text, /calories/i),
+    calories: caloriesFromText_(text),
     totalFat: nutrientNumber_(text, /total\s+fat|fat/i),
     totalCarb: nutrientNumber_(text, /total\s+carbohydrate|carbohydrate|carbs?/i),
     sugar: zeroIfPhrase_(text, /\b(no|zero)\s+sugar\b/i, nutrientNumber_(text, /total\s+sugars?|sugars?|sugar/i)),
@@ -944,16 +944,24 @@ function parseNutritionText_(text) {
 
 function numberAfter_(text, labelRegex) {
   const source = String(text || "").replace(/\n/g, " ");
-  const match = source.match(new RegExp(`${labelRegex.source}\\D*([0-9]+(?:\\.[0-9]+)?)`, "i"));
+  const match = source.match(new RegExp(`(?:${labelRegex.source})\\D*([0-9]+(?:\\.[0-9]+)?)`, "i"));
   return match ? Number(match[1]) : "";
+}
+
+function caloriesFromText_(text) {
+  const source = String(text || "").replace(/\n/g, " ");
+  const direct = source.match(/\bcalories(?:\s+per\s+serving)?\D*([0-9]+(?:\.[0-9]+)?)/i);
+  if (direct) return Number(direct[1]);
+  const before = source.match(/\b([0-9]+(?:\.[0-9]+)?)\s+calories\b(?!\s+a\s+day)/i);
+  return before ? Number(before[1]) : "";
 }
 
 function nutrientNumber_(text, labelRegex) {
   const source = String(text || "").replace(/\n/g, " ");
-  const after = source.match(new RegExp(`${labelRegex.source}\\D*([0-9]+(?:\\.[0-9]+)?)\\s*(?:g|gram|grams|mg|kcal)?`, "i"));
-  if (after) return Number(after[1]);
-  const before = source.match(new RegExp(`([0-9]+(?:\\.[0-9]+)?)\\s*(?:g|gram|grams|mg|kcal)?\\s*${labelRegex.source}`, "i"));
-  return before ? Number(before[1]) : "";
+  const after = source.match(new RegExp(`(?:${labelRegex.source})\\D*([0-9]+(?:\\.[0-9]+)?)\\s*(?:g|gram|grams|mg|kcal)?`, "i"));
+  if (after && after[1] !== undefined) return Number(after[1]);
+  const before = source.match(new RegExp(`([0-9]+(?:\\.[0-9]+)?)\\s*(?:g|gram|grams|mg|kcal)?\\s*(?:${labelRegex.source})`, "i"));
+  return before && before[1] !== undefined ? Number(before[1]) : "";
 }
 
 function zeroIfPhrase_(text, phraseRegex, fallback) {
@@ -962,7 +970,11 @@ function zeroIfPhrase_(text, phraseRegex, fallback) {
 
 function servingSizeFromText_(text) {
   const source = String(text || "").replace(/\n/g, " ");
-  const match = source.match(/serving\s+size\D*([0-9]+(?:\.[0-9]+)?|[0-9]+\/[0-9]+)\s*(g|gram|grams|oz|fl oz|ml|cup|cups)/i);
+  const parenthetical = source.match(/serving\s+size.*?\(([0-9]+(?:\.[0-9]+)?|[0-9]+\/[0-9]+)\s*(g|gram|grams|oz|fl oz|ml|milliliter|milliliters|cup|cups)\)/i);
+  if (parenthetical) {
+    return { quantity: parseNumberLike_(parenthetical[1]), unit: normalizeUnit_(parenthetical[2]) };
+  }
+  const match = source.match(/serving\s+size\D*([0-9]+(?:\.[0-9]+)?|[0-9]+\/[0-9]+)(?:\s*[a-z ]{0,25})?(?:\(|\s)(g|gram|grams|oz|fl oz|ml|milliliter|milliliters|cup|cups)\)?/i);
   if (!match) return { quantity: "", unit: "" };
   return { quantity: parseNumberLike_(match[1]), unit: normalizeUnit_(match[2]) };
 }
@@ -1047,6 +1059,7 @@ function normalizeUnit_(unit) {
   if (["gram", "grams"].indexOf(clean) !== -1) return "g";
   if (["fluid ounce", "fl oz"].indexOf(clean) !== -1) return "fl oz";
   if (["ounce", "ounces", "oz"].indexOf(clean) !== -1) return "oz";
+  if (["milliliter", "milliliters", "ml"].indexOf(clean) !== -1) return "ml";
   if (["cup", "cups"].indexOf(clean) !== -1) return "cup";
   if (["count", "ct"].indexOf(clean) !== -1) return "count";
   return clean;
