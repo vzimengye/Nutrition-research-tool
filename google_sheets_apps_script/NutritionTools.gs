@@ -107,6 +107,7 @@ function onOpen() {
     .addSeparator()
     .addItem("Parse product page URLs", "parseProductPageUrlsForSelectedRows")
     .addItem("Parse OCR image URLs", "parseOcrForSelectedRows")
+    .addItem("Check OCR setup", "checkOcrSetup")
     .addItem("Approve selected candidates", "approveSelectedCandidates")
     .addItem("Mark selected as not found", "markSelectedNotFound")
     .addItem("Show summary", "showStatusSummary")
@@ -582,10 +583,9 @@ function ocrImageUrl_(imageUrl) {
       return { text: "", error: "Drive API advanced service is not enabled. In Apps Script, go to Services > + > Drive API > Add." };
     }
     const hasDriveV2Insert = typeof Drive.Files.insert === "function";
-    const hasDriveV3Create = typeof Drive.Files.create === "function";
-    if (!hasDriveV2Insert && !hasDriveV3Create) {
+    if (!hasDriveV2Insert) {
       const available = Object.keys(Drive.Files || {}).sort().join(", ");
-      return { text: "", error: `Drive API is enabled, but no supported upload method was found. Available Drive.Files methods: ${available || "none"}` };
+      return { text: "", error: `OCR needs Drive API v2 with Drive.Files.insert. The script currently sees these Drive.Files methods: ${available || "none"}. Save Drive service as v2, save the Apps Script project, then refresh the Google Sheet.` };
     }
 
     const response = UrlFetchApp.fetch(imageUrl, {
@@ -607,37 +607,14 @@ function ocrImageUrl_(imageUrl) {
     }
 
     const fileName = `nutrition_ocr_${Date.now()}`;
-    let file;
-    let tempImageFileId = "";
-    if (hasDriveV2Insert) {
-      file = Drive.Files.insert(
-        { title: fileName, mimeType: MimeType.GOOGLE_DOCS },
-        blob,
-        { ocr: true }
-      );
-    } else {
-      try {
-        file = Drive.Files.create(
-          { name: fileName, mimeType: MimeType.GOOGLE_DOCS },
-          blob,
-          { ocr: true, ocrLanguage: "en", fields: "id,name" }
-        );
-      } catch (directCreateError) {
-        // Drive API v3 can reject direct image -> Google Doc OCR conversion.
-        // Upload the image first, then copy/convert it to a Google Doc with OCR.
-        const tempImage = DriveApp.createFile(blob).setName(`${fileName}.jpg`);
-        tempImageFileId = tempImage.getId();
-        file = Drive.Files.copy(
-          { name: fileName, mimeType: MimeType.GOOGLE_DOCS },
-          tempImageFileId,
-          { ocr: true, ocrLanguage: "en", fields: "id,name" }
-        );
-      }
-    }
+    const file = Drive.Files.insert(
+      { title: fileName, mimeType: MimeType.GOOGLE_DOCS },
+      blob,
+      { ocr: true, ocrLanguage: "en" }
+    );
     const doc = DocumentApp.openById(file.id);
     const text = doc.getBody().getText();
     DriveApp.getFileById(file.id).setTrashed(true);
-    if (tempImageFileId) DriveApp.getFileById(tempImageFileId).setTrashed(true);
     if (!text || !text.trim()) {
       return { text: "", error: "Drive OCR returned empty text. Try a larger/clearer image or manually enter values." };
     }
@@ -645,6 +622,26 @@ function ocrImageUrl_(imageUrl) {
   } catch (error) {
     return { text: "", error: error.message || String(error) };
   }
+}
+
+function checkOcrSetup() {
+  const ui = SpreadsheetApp.getUi();
+  if (typeof Drive === "undefined" || !Drive.Files) {
+    ui.alert("Drive API advanced service is not enabled in this Apps Script project.");
+    return;
+  }
+  const methods = Object.keys(Drive.Files || {}).sort();
+  const hasInsert = typeof Drive.Files.insert === "function";
+  ui.alert(
+    [
+      hasInsert ? "OCR setup looks correct: Drive.Files.insert is available." : "OCR setup is not ready: Drive.Files.insert is not available.",
+      "",
+      "Available Drive.Files methods:",
+      methods.length ? methods.join(", ") : "none",
+      "",
+      hasInsert ? "You can run Parse OCR image URLs." : "Make sure the Drive API service is saved as v2, save the project, then refresh the Google Sheet.",
+    ].join("\n")
+  );
 }
 
 function normalizeImageUrl_(imageUrl) {
